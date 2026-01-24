@@ -1,37 +1,15 @@
-FROM python:3.9-slim
+# Use a base image with Java 21
+FROM eclipse-temurin:21-jdk-alpine
 
-# Set working directory
+# Set the working directory inside the container
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
+# Copy the packaged jar file into the container
+# Ensure you run 'mvn package' before building the image
+COPY target/portfolio-0.0.1-SNAPSHOT.jar app.jar
 
-# Copy requirements first for better caching
-COPY requirements.txt .
+# Expose the port the application runs on
+EXPOSE 8080
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application code
-COPY src/ ./src/
-COPY config.yaml .
-COPY main.py .
-
-# Create logs directory
-RUN mkdir -p logs
-
-# Set environment variables
-ENV PYTHONPATH=/app
-ENV FLASK_ENV=production
-
-# Expose port
-EXPOSE 8050
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8050/ || exit 1
-
-# Run the application
-CMD ["python", "main.py"]
+# Command to run the application
+ENTRYPOINT ["java", "-jar", "app.jar"]
