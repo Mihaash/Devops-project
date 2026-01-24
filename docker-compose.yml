@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  security-dashboard:
+    build: .
+    container_name: security-dashboard
+    ports:
+      - "8050:8050"
+    environment:
+      - PYTHONPATH=/app
+      - FLASK_ENV=production
+    volumes:
+      - ./logs:/app/logs
+      - ./config.yaml:/app/config.yaml:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8050/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - security-network
+
+networks:
+  security-network:
+    driver: bridge
