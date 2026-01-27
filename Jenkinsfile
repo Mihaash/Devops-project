@@ -2,41 +2,36 @@ pipeline {
     agent any
 
     tools {
-        // Ensure 'Maven 3' and 'JDK 21' are configured in your Jenkins Global Tool Configuration
-        maven 'Maven 3' 
+        maven 'Maven 3'
         jdk 'JDK 21'
     }
 
     environment {
-        // Define environment variables here
         IMAGE_NAME = 'portfolio-app'
-        DOCKER_REGISTRY_CREDENTIALS_ID = 'docker-hub-credentials' // ID of credentials stored in Jenkins
-        DOCKER_USER = 'your-dockerhub-username'
+        DOCKER_REPO = 'your-dockerhub-username/portfolio-app'
+        DOCKER_CREDS = 'docker-hub-credentials'
     }
 
     stages {
+
         stage('Checkout') {
             steps {
-                // Get code from the repository
                 checkout scm
             }
         }
 
-        stage('Build & Test') {
+        stage('Build') {
             steps {
-                // Compile and package the application, skipping tests for speed if desired (remove -DskipTests to run them)
-                sh 'mvn clean package'
+                sh 'mvn clean package -DskipTests'
             }
         }
 
         stage('Unit Tests') {
             steps {
-                // Run unit tests and generate reports
                 sh 'mvn test'
             }
             post {
                 always {
-                    // Archiving JUnit test results
                     junit 'target/surefire-reports/*.xml'
                 }
             }
@@ -45,48 +40,39 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    // Build the Docker image
-                    sh "docker build -t ${DOCKER_USER}/${IMAGE_NAME}:${BUILD_NUMBER} ."
-                    sh "docker build -t ${DOCKER_USER}/${IMAGE_NAME}:latest ."
+                    sh "docker build -t ${DOCKER_REPO}:${BUILD_NUMBER} ."
+                    sh "docker tag ${DOCKER_REPO}:${BUILD_NUMBER} ${DOCKER_REPO}:latest"
                 }
             }
         }
 
-        /* 
-        // Uncomment this stage to push to Docker Hub
         stage('Push Docker Image') {
             steps {
                 script {
-                    withCredentials([usernamePassword(credentialsId: DOCKER_REGISTRY_CREDENTIALS_ID, usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')]) {
-                        sh "echo $PASSWORD | docker login -u $USERNAME --password-stdin"
-                        sh "docker push ${DOCKER_USER}/${IMAGE_NAME}:${BUILD_NUMBER}"
-                        sh "docker push ${DOCKER_USER}/${IMAGE_NAME}:latest"
+                    withCredentials([
+                        usernamePassword(credentialsId: DOCKER_CREDS, usernameVariable: 'USER', passwordVariable: 'PASS')
+                    ]) {
+                        sh "echo $PASS | docker login -u $USER --password-stdin"
+                        sh "docker push ${DOCKER_REPO}:${BUILD_NUMBER}"
+                        sh "docker push ${DOCKER_REPO}:latest"
                     }
                 }
             }
         }
-        */
-        
-        /*
-        // Uncomment this stage for deployment (e.g., to a remote server via SSH)
-        stage('Deploy') {
+
+        stage('Deploy to Kubernetes') {
             steps {
-                // Example: SSH into a server and pull/run the new image
-                // sshagent(['your-ssh-credentials-id']) {
-                //    sh "ssh user@server 'docker pull ${DOCKER_USER}/${IMAGE_NAME}:latest && docker-compose up -d'"
-                // }
-                echo 'Deployment stage placeholder'
+                sh "kubectl set image deployment/calculator-app-deployment calculator-app=${DOCKER_REPO}:latest"
             }
         }
-        */
     }
 
     post {
         success {
-            echo 'Pipeline executed successfully!'
+            echo 'CI/CD Pipeline completed successfully 🚀'
         }
         failure {
-            echo 'Pipeline failed.'
+            echo 'CI/CD Pipeline failed ❌'
         }
     }
 }
