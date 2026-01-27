@@ -2,77 +2,111 @@ pipeline {
     agent any
 
     tools {
-        // Ensure 'Maven 3' and 'JDK 21' are configured in your Jenkins Global Tool Configuration
-        maven 'Maven 3' 
-        jdk 'JDK 21'
+        maven 'Maven 3.9.6'
     }
 
     environment {
-        DOCKER_REPO = 'mihaash/portfolio'
-        DOCKER_CREDS = 'docker-hub-credentials'
+        APP_NAME        = "bluegreen-calculator"
+        BLUE_CONTAINER  = "bluegreen-blue"
+        GREEN_CONTAINER = "bluegreen-green"
+        BLUE_PORT       = "8082"
+        GREEN_PORT      = "8083"
+        NGINX_CONF      = "./nginx/nginx.conf"
     }
 
     stages {
 
-        stage('Checkout') {
+        stage('Build App') {
             steps {
-                checkout scm
+                sh '''
+                mvn clean package -Pblue
+                mvn package -Pgreen
+                '''
             }
         }
 
-        stage('Build') {
+        stage('Build Docker Images') {
             steps {
-                sh 'mvn clean package -DskipTests'
+                sh '''
+                docker build -t $APP_NAME:blue  --build-arg JAR_FILE=calculator-blue.jar .
+                docker build -t $APP_NAME:green --build-arg JAR_FILE=calculator-green.jar .
+                '''
             }
         }
 
-        stage('Unit Tests') {
+        stage('Deploy GREEN') {
             steps {
-                sh 'mvn test'
-            }
-            post {
-                always {
-                    junit 'target/surefire-reports/*.xml'
-                }
+                sh '''
+                docker rm -f $GREEN_CONTAINER || true
+
+                docker run -d \
+                  --name $GREEN_CONTAINER \
+                  -p $GREEN_PORT:8083 \
+                  $APP_NAME:green
+
+                sleep 15
+                docker ps
+                docker logs $GREEN_CONTAINER
+                '''
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Smoke Test GREEN') {
             steps {
-                script {
-                    sh "docker build -t ${DOCKER_REPO}:${BUILD_NUMBER} ."
-                    sh "docker tag ${DOCKER_REPO}:${BUILD_NUMBER} ${DOCKER_REPO}:latest"
-                }
+                sh '''
+                sleep 10
+                curl -f http://localhost:8083
+                '''
             }
         }
 
-        stage('Push Docker Image') {
+        stage('Switch NGINX to GREEN') {
             steps {
-                script {
-                    withCredentials([
-                        usernamePassword(credentialsId: DOCKER_CREDS, usernameVariable: 'USER', passwordVariable: 'PASS')
-                    ]) {
-                        sh "echo $PASS | docker login -u $USER --password-stdin"
-                        sh "docker push ${DOCKER_REPO}:${BUILD_NUMBER}"
-                        sh "docker push ${DOCKER_REPO}:latest"
-                    }
-                }
+                sh '''
+                echo "Switching traffic to GREEN..."
+
+                sed -i 's/set \\$deployment "blue"/set \\$deployment "green"/' $NGINX_CONF
+                
+                # Ensure Nginx container is running
+                if [ -z "$(docker ps -q -f name=bluegreen-nginx)" ]; then
+                    echo "Nginx container is not running. Starting it..."
+                    docker rm -f bluegreen-nginx || true
+                    
+                    docker run -d \
+                      --name bluegreen-nginx \
+                      -p 8090:80 \
+                      --add-host host.docker.internal:host-gateway \
+                      nginx
+                fi
+
+                # Update config and reload
+                docker cp $NGINX_CONF bluegreen-nginx:/etc/nginx/nginx.conf
+                docker exec bluegreen-nginx nginx -s reload
+                '''
             }
         }
 
-        stage('Deploy to Kubernetes') {
+        stage('Deploy BLUE') {
             steps {
-                sh "kubectl set image deployment/portfolio-deployment portfolio=${DOCKER_REPO}:latest"
+                sh '''
+                echo "Deploying BLUE (Dummy)..."
+                docker rm -f $BLUE_CONTAINER || true
+
+                docker run -d \
+                  --name $BLUE_CONTAINER \
+                  -p $BLUE_PORT:8082 \
+                  $APP_NAME:blue
+                '''
             }
         }
     }
 
     post {
-        success {
-            echo 'Pipeline executed successfully!'
-        }
         failure {
-            echo 'Pipeline failed.'
+            echo "Deployment failed. BLUE is still active."
+        }
+        success {
+            echo "Deployment successful. GREEN is live."
         }
     }
 }
