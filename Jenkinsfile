@@ -2,13 +2,13 @@ pipeline {
     agent any
 
     tools {
-        maven 'Maven 3'
+        // Ensure 'Maven 3' and 'JDK 21' are configured in your Jenkins Global Tool Configuration
+        maven 'Maven 3' 
         jdk 'JDK 21'
     }
 
     environment {
-        IMAGE_NAME = 'portfolio-app'
-        DOCKER_REPO = 'your-dockerhub-username/portfolio-app'
+        DOCKER_REPO = 'mihaash/portfolio'
         DOCKER_CREDS = 'docker-hub-credentials'
     }
 
@@ -62,17 +62,17 @@ pipeline {
 
         stage('Deploy to Kubernetes') {
             steps {
-                sh "kubectl set image deployment/calculator-app-deployment calculator-app=${DOCKER_REPO}:latest"
+                sh "kubectl set image deployment/portfolio-deployment portfolio=${DOCKER_REPO}:latest"
             }
         }
     }
 
     post {
         success {
-            echo 'CI/CD Pipeline completed successfully 🚀'
+            echo 'Pipeline executed successfully!'
         }
         failure {
-            echo 'CI/CD Pipeline failed ❌'
+            echo 'Pipeline failed.'
         }
     }
 }
