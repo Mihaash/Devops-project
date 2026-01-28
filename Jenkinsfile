@@ -6,9 +6,9 @@ pipeline {
     }
 
     environment {
-        APP_NAME        = "bluegreen-calculator"
-        BLUE_CONTAINER  = "bluegreen-blue"
-        GREEN_CONTAINER = "bluegreen-green"
+        APP_NAME        = "portfolio"
+        BLUE_CONTAINER  = "portfolio-blue"
+        GREEN_CONTAINER = "portfolio-green"
         BLUE_PORT       = "8082"
         GREEN_PORT      = "8083"
         NGINX_CONF      = "./nginx/nginx.conf"
@@ -19,8 +19,7 @@ pipeline {
         stage('Build App') {
             steps {
                 sh '''
-                mvn clean package -Pblue
-                mvn package -Pgreen
+                mvn clean package
                 '''
             }
         }
@@ -28,8 +27,8 @@ pipeline {
         stage('Build Docker Images') {
             steps {
                 sh '''
-                docker build -t $APP_NAME:blue  --build-arg JAR_FILE=calculator-blue.jar .
-                docker build -t $APP_NAME:green --build-arg JAR_FILE=calculator-green.jar .
+                docker build -t $APP_NAME:blue  --build-arg JAR_FILE=target/portfolio-0.0.1-SNAPSHOT.jar .
+                docker build -t $APP_NAME:green --build-arg JAR_FILE=target/portfolio-0.0.1-SNAPSHOT.jar .
                 '''
             }
         }
@@ -41,7 +40,7 @@ pipeline {
 
                 docker run -d \
                   --name $GREEN_CONTAINER \
-                  -p $GREEN_PORT:8083 \
+                  -p $GREEN_PORT:8080 \
                   $APP_NAME:green
 
                 sleep 15
@@ -94,7 +93,7 @@ pipeline {
 
                 docker run -d \
                   --name $BLUE_CONTAINER \
-                  -p $BLUE_PORT:8082 \
+                  -p $BLUE_PORT:8080 \
                   $APP_NAME:blue
                 '''
             }
